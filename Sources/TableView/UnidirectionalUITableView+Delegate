@@ -1,0 +1,160 @@
+//
+//  TaskListView.swift
+//  tasklist
+//
+//  Created by ilya Ramanenia on 03/03/2026.
+//
+
+import UIKit
+
+class TaskListView: UIViewController {
+
+    private var viewModel: TaskListViewModelIn
+    
+    private var lastRenderState: TaskListViewState?
+    
+    private var deleteCellCompletions: [TaskCellViewState : (Bool) -> Void] = [:]
+    
+    //    private var diffableDataSource: UITableViewDiffableDataSource<SectionItemView, TaskItemView>?
+
+    private let tasksTableView = UITableView()
+    private let pullToRefreshIndidator = UIRefreshControl()
+    private let statusLabel: UILabel = {
+        let label = UILabel()
+        label.textAlignment = .center
+        label.font = .italicSystemFont(ofSize: 14)
+        return label
+    }()
+    
+    init(viewModel: TaskListViewModelIn) {
+        self.viewModel = viewModel
+        super.init(nibName: nil, bundle: nil)
+    }
+
+    @available(*, unavailable)
+    required init?(coder: NSCoder) {
+        fatalError("Not implemented")
+    }
+    
+    override func loadView() {
+        super.loadView()
+        
+        view.autoresizingMask = [.flexibleWidth, .flexibleHeight]
+        tasksTableView.frame = view.bounds
+        view.addSubview(tasksTableView)
+        
+        pullToRefreshIndidator.addTarget(self, action: #selector(didPullToRefresh), for: .valueChanged)
+        tasksTableView.refreshControl = pullToRefreshIndidator
+        tasksTableView.delegate = self
+        tasksTableView.dataSource = self
+        
+        statusLabel.frame = .init(origin: .zero, size: .init(width: tasksTableView.frame.width, height: 44))
+        
+        tasksTableView.tableHeaderView = statusLabel
+    }
+    
+    override func viewDidLoad() {
+        super.viewDidLoad()
+        
+        tasksTableView.register(
+            UITableViewCell.self,
+            forCellReuseIdentifier: "taskCell"
+        )
+        
+        Task { await viewModel.sendEvent(.viewDidLoad) }
+    }
+    
+    @objc private func didPullToRefresh() {
+        Task { await viewModel.sendEvent(.pulledToRefresh) }
+    }
+
+    func update(state: TaskListViewState) {
+        assert(Thread.isMainThread == true, "Calling not from main thread")
+        
+        switch state.loadState {
+        case .refreshing:
+            pullToRefreshIndidator.beginRefreshing()
+        default:
+            pullToRefreshIndidator.endRefreshing()
+        }
+        
+        statusLabel.text = state.lastErrorMessage
+        
+        let deletingCells = deleteCellCompletions.keys
+        for deletingCell in deletingCells {
+            if !state.removingCells.contains(deletingCell) {
+                deleteCellCompletions[deletingCell]?(true)
+                deleteCellCompletions[deletingCell] = nil
+            }
+        }
+        
+        // Split deleted and inserted. Can be improved with UITableViewDiffableDataSource
+        
+        let oldCells = lastRenderState?.cells ?? []
+        let newCells = state.cells
+        
+        let deleted = oldCells.enumerated()
+            .filter { !newCells.contains($0.element) }
+            .map { IndexPath(row: $0.offset, section: 0) }
+
+        let inserted = newCells.enumerated()
+            .filter { !oldCells.contains($0.element) }
+            .map { IndexPath(row: $0.offset, section: 0) }
+
+        lastRenderState = state
+
+        tasksTableView.performBatchUpdates {
+            tasksTableView.deleteRows(at: deleted, with: .automatic)
+            tasksTableView.insertRows(at: inserted, with: .automatic)
+        }
+    }
+}
+
+extension TaskListView: UITableViewDelegate, UITableViewDataSource {
+    func tableView(_ tableView: UITableView, numberOfRowsInSection section: Int) -> Int {
+        lastRenderState?.cells.count ?? 0
+    }
+    
+    func tableView(_ tableView: UITableView, cellForRowAt indexPath: IndexPath) -> UITableViewCell {
+        let cell = tableView.dequeueReusableCell(withIdentifier: "taskCell", for: indexPath)
+        
+        guard let cellState = lastRenderState?.cells[safe: indexPath.row] else { return cell }
+        
+        var config = UIListContentConfiguration.cell()
+        config.text = cellState.title
+        config.secondaryText = cellState.description
+        cell.contentConfiguration = config
+        
+        return cell
+    }
+    
+    func tableView(_ tableView: UITableView, commit editingStyle: UITableViewCell.EditingStyle, forRowAt indexPath: IndexPath) {
+        guard editingStyle == .delete,
+              let cellState = lastRenderState?.cells[safe: indexPath.row] else { return }
+        
+        Task { await viewModel.sendEvent(.removed(cell: cellState)) }
+    }
+    
+    func tableView(_ tableView: UITableView, trailingSwipeActionsConfigurationForRowAt indexPath: IndexPath) -> UISwipeActionsConfiguration? {
+        let delete = UIContextualAction(style: .destructive, title: "Delete") { [weak self] _, _, completion in
+            
+            guard let self,
+                  let cell = self.lastRenderState?.cells[safe: indexPath.row]
+            else {
+                completion(false)
+                return
+            }
+
+            Task { await self.viewModel.sendEvent(.removed(cell: cell)) }
+            
+            self.deleteCellCompletions[cell] = completion
+        }
+
+        return UISwipeActionsConfiguration(actions: [delete])
+    }
+    
+    func tableView(_ tableView: UITableView, didSelectRowAt indexPath: IndexPath) {
+        tableView.deselectRow(at: indexPath, animated: true)
+    }
+}
+
