@@ -1,4 +1,4 @@
-// TODO: Add cancel fetch
+// TODO: Add Cancel prefetch
 
 actor PrefetchManager<ID: Hashable & Sendable> {
 
@@ -49,6 +49,7 @@ actor PrefetchManager<ID: Hashable & Sendable> {
         while !queue.isEmpty {
 
             if runningTasks >= maxConcurrent {
+                // TODO: Upgrade with AsyncSemaphore / Timer
                 try? await Task.sleep(for: .milliseconds(20))
                 continue
             }
