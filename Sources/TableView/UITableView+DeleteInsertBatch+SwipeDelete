@@ -18,7 +18,7 @@ class TaskListView: UIViewController {
     //    private var diffableDataSource: UITableViewDiffableDataSource<SectionItemView, TaskItemView>?
 
     private let tasksTableView = UITableView()
-    private let pullToRefreshIndidator = UIRefreshControl()
+
     private let statusLabel: UILabel = {
         let label = UILabel()
         label.textAlignment = .center
@@ -47,10 +47,6 @@ class TaskListView: UIViewController {
         tasksTableView.refreshControl = pullToRefreshIndidator
         tasksTableView.delegate = self
         tasksTableView.dataSource = self
-        
-        statusLabel.frame = .init(origin: .zero, size: .init(width: tasksTableView.frame.width, height: 44))
-        
-        tasksTableView.tableHeaderView = statusLabel
     }
     
     override func viewDidLoad() {
@@ -70,25 +66,7 @@ class TaskListView: UIViewController {
 
     func update(state: TaskListViewState) {
         assert(Thread.isMainThread == true, "Calling not from main thread")
-        
-        if state.refreshIndicatorStateLoading {
-            pullToRefreshIndidator.beginRefreshing()
-        }
-        else {
-            pullToRefreshIndidator.endRefreshing()
-        }
-        
-        statusLabel.text = state.errorMessage
-        
-        // Check if already removed
-        let deletingCellIds = deleteCellCompletions.keys
-        for deletingCellId in deletingCellIds {
-            if !state.removing.contains(deletingCellId) {
-                deleteCellCompletions[deletingCellId]?(true)
-                deleteCellCompletions[deletingCellId] = nil
-            }
-        }
-        
+
         // Split deleted and inserted. Can be improved with UITableViewDiffableDataSource
         let oldCells = lastRenderState?.cells ?? []
         let newCells = state.cells
@@ -130,7 +108,9 @@ extension TaskListView: UITableViewDelegate, UITableViewDataSource {
         
         return cell
     }
-    
+
+// MARK: - Delegate
+
     func tableView(_ tableView: UITableView, trailingSwipeActionsConfigurationForRowAt indexPath: IndexPath) -> UISwipeActionsConfiguration? {
         let delete = UIContextualAction(style: .destructive, title: "Delete") { [weak self] _, _, completion in
             
