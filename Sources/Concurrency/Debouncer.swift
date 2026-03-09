@@ -7,7 +7,7 @@ actor Debouncer {
         self.delay = delay
     }
 
-    func call(_ action: @escaping @Sendable () async -> Void) {
+    func call(_ action: @escaping @Sendable () async -> Void) async {
         task?.cancel()
 
         task = Task {
