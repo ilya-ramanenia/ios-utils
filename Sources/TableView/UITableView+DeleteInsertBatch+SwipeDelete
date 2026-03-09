@@ -10,21 +10,11 @@ import UIKit
 class TaskListView: UIViewController {
 
     private var viewModel: TaskListViewModelIn
-    
     private var lastRenderState: TaskListViewState?
-    
     private var deleteCellCompletions: [Int : (Bool) -> Void] = [:]
-    
     //    private var diffableDataSource: UITableViewDiffableDataSource<SectionItemView, TaskItemView>?
 
     private let tasksTableView = UITableView()
-
-    private let statusLabel: UILabel = {
-        let label = UILabel()
-        label.textAlignment = .center
-        label.font = .italicSystemFont(ofSize: 14)
-        return label
-    }()
     
     init(viewModel: TaskListViewModelIn) {
         self.viewModel = viewModel
@@ -59,10 +49,6 @@ class TaskListView: UIViewController {
         
         Task { await viewModel.inputEvent(.viewDidLoad) }
     }
-    
-    @objc private func didPullToRefresh() {
-        Task { await viewModel.inputEvent(.pulledToRefresh) }
-    }
 
     func update(state: TaskListViewState) {
         assert(Thread.isMainThread == true, "Calling not from main thread")
@@ -85,6 +71,10 @@ class TaskListView: UIViewController {
             tasksTableView.deleteRows(at: deleted, with: .automatic)
             tasksTableView.insertRows(at: inserted, with: .automatic)
         }
+    }
+    
+    @objc private func didPullToRefresh() {
+        Task { await viewModel.inputEvent(.pulledToRefresh) }
     }
 }
 
