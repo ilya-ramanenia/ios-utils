@@ -1,10 +1,12 @@
+// TODO: Add cancel fetch
+
 actor PrefetchManager<ID: Hashable & Sendable> {
 
-    typealias Fetch = @Sendable ([ID]) async -> Void
+    typealias FetchNext = @Sendable ([ID]) async -> Void
 
     private let batchSize: Int
     private let maxConcurrent: Int
-    private let fetch: Fetch
+    var fetchNext: FetchNext?
 
     private var queue = Set<ID>()
     private var inFlight = Set<ID>()
@@ -14,22 +16,18 @@ actor PrefetchManager<ID: Hashable & Sendable> {
 
     private let debouncer = Debouncer(delay: .milliseconds(60))
 
-    init(
-        batchSize: Int = 4,
-        maxConcurrent: Int = 2,
-        fetch: @escaping Fetch
-    ) {
+    init(batchSize: Int = 4,
+        maxConcurrent: Int = 2) {
         self.batchSize = batchSize
         self.maxConcurrent = maxConcurrent
-        self.fetch = fetch
     }
 
-    func enqueue(_ ids: [ID]) {
+    func enqueue(_ ids: [ID]) async {
         for id in ids where !inFlight.contains(id) {
             queue.insert(id)
         }
-
-        debouncer.call { [weak self] in
+        
+        await debouncer.call { [weak self] in
             await self?.startScheduler()
         }
     }
@@ -62,7 +60,7 @@ actor PrefetchManager<ID: Hashable & Sendable> {
             runningTasks += 1
 
             Task {
-                await fetch(batch)
+                await fetchNext?(batch)
                 await self.finishBatch(batch)
             }
         }
