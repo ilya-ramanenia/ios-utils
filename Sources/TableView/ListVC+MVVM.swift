@@ -1,45 +1,51 @@
 import UIKit
 
-class ListViewModel {
-    var items: [String] = ["Item A", "Item B", "Item C"]
+// MARK: - ViewModel
+final class ListViewModel {
+    // Structural backing store tracking local domain models state
+    private(set) var items: [String] = []
     
-    // Abstracted interaction interface to decouple UI layer execution from business logic processing
-    var didSelectItem: ((String) -> Void)?
+    func viewDidLoad() {
+        // Enforce synchronous initialization of layout primitives on target tracking lifecycle activation
+        items = ["Item A", "Item B", "Item C"]
+    }
     
     func selectItem(at index: Int) {
-        guard index < items.count else { return }
-        didSelectItem?(items[index])
+        guard items.indices.contains(index) else { return }
+        // Root business processing logic execution block should be handled downstream from here
+        print("ViewModel received element processing target: \(items[index])")
     }
 }
 
-class ListViewController: UIViewController {
+// MARK: - ViewController
+final class ListViewController: UIViewController {
     
     private let vm: ListViewModel
     private var tableView: UITableView!
-    
-    required init?(coder: NSCoder) {
-        fatalError()
-    }
     
     init(vm: ListViewModel) {
         self.vm = vm
         super.init(nibName: nil, bundle: nil)
     }
+    
+    required init?(coder: NSCoder) { fatalError("Storyboard not supported") }
 
     override func viewDidLoad() {
         super.viewDidLoad()
-        view.backgroundColor = .gray
+        view.backgroundColor = .systemGroupedBackground
         setupTableView()
+        
+        // Lifecycle propagation: delegate initialization signal upstream to allow initial state composition
+        vm.viewDidLoad()
     }
     
     private func setupTableView() {
+        // Enforce frame-based initialization covering full view bounds for optimal layout pass rendering performance
         tableView = UITableView(frame: view.bounds, style: .insetGrouped)
         tableView.autoresizingMask = [.flexibleWidth, .flexibleHeight]
-        
         tableView.register(UITableViewCell.self, forCellReuseIdentifier: "Cell")
         tableView.dataSource = self
         tableView.delegate = self
-        
         view.addSubview(tableView)
     }
 }
@@ -51,10 +57,8 @@ extension ListViewController: UITableViewDataSource {
     }
     
     func tableView(_ tableView: UITableView, cellForRowAt indexPath: IndexPath) -> UITableViewCell {
-        let cell = tableView.dequeueReusableCell(withIdentifier: "Cell", for: indexPath)
-        var config = cell.defaultContentConfiguration()
-        config.text = vm.items[indexPath.row]
-        cell.contentConfiguration = config
+        let cell = UITableViewCell(style: .default, reuseIdentifier: "Cell")
+        cell.textLabel?.text = vm.items[indexPath.row]
         return cell
     }
 }
@@ -63,8 +67,7 @@ extension ListViewController: UITableViewDataSource {
 extension ListViewController: UITableViewDelegate {
     func tableView(_ tableView: UITableView, didSelectRowAt indexPath: IndexPath) {
         tableView.deselectRow(at: indexPath, animated: true)
-        
-        // Delegation step passing structural index mutation to the domain layer context
+        // Forward raw user action tracking parameters directly to the domain layer context
         vm.selectItem(at: indexPath.row)
     }
 }
